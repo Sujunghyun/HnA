@@ -1,0 +1,23 @@
+{
+  "name": "hna",
+  "version": "0.1.0",
+  "description": "hna project practice",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "sjh",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.16.3",
+    "express-session": "^1.15.6",
+    "generic-pool": "^3.4.2",
+    "lodash": "^4.17.10",
+    "mysql": "^2.16.0",
+    "passport": "^0.4.0",
+    "passport-facebook": "^2.1.1",
+    "passport-google": "^0.3.0",
+    "passport-kakao": "^0.0.5",
+    "passport-local": "^1.0.0"
+  }
+}
