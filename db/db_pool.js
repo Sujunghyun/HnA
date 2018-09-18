@@ -1,6 +1,7 @@
 const mysql = require('mysql');
 const generic_pool = require('generic-pool');
 const config = require('./db_config').local;
+// const config = require('./db_config').imsi;
 
 module.exports = function () {
   const pool = mysql.createPool({
@@ -12,11 +13,11 @@ module.exports = function () {
   });
   
   return {
-    getConnection: function (callback) {    // connection pool을 생성, 리턴
+    getConnection(callback) {    // connection pool을 생성, 리턴
       pool.getConnection(callback);
       console.log('DB POOL SUCCESS!!!');        
     },
-    end: function(callback){
+    end(callback){
       pool.end(callback);
       console.log('DB END');        
     }
