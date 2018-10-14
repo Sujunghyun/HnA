@@ -107,10 +107,8 @@ router.post('/openlecture', (req, res) => {
 
 // 개설 강의 조회(학생)(B) 
 router.get('/checklecture/:l_grade/:l_semester', (req, res) => {
-    // _.pick로 파라미터 정리
     const temp = _.pick(req.params, ['l_grade', 'l_semester']),
           sql = 'select * from LECTURE where l_grade = ? and l_semester = ?;'    
-    // _.toArray로 타입을 Array로 변경. query 시 필요
     const params = _.toArray(temp);
     console.log(params);
     
@@ -176,7 +174,6 @@ router.post('/register', (req, res) => {
 
 // 강의정보 조회(교수)(B)
 router.get('/courseinfo/:l_id/', (req, res) => {
-    // _.pick로 파라미터 정리
     const l_id = req.params.l_id,
           sql = 'select * from LECTURE where l_id = ?;'
     
@@ -201,7 +198,6 @@ router.get('/courseinfo/:l_id/', (req, res) => {
 
 // 출석부 조회(교수)(B) - 해당 강의를 듣는 학생의 리스트를 조회한다.
 router.get('/rollbook/:c_id/', (req, res) => {
-    // _.pick로 파라미터 정리
     const c_id = req.params.c_id,
           sql = 'select student_id, u_name from COURSE where c_id = ?;'
     
@@ -248,64 +244,154 @@ router.put('/reg_beacon', (req, res) => {
     });    
 });
 
+// 수업 상태 변경(교수)(B)
+router.put('/lecture', (req, res) => {    
+    const u_id = req.body.u_id,
+          c_id = req.body.c_id,
+          temp = _.pick(req.body, ['c_id', 'beacon_id']),
+          select_sql = 'select u_id, u_role from USER where u_name in' + // u_name이 prof_name과 같은지 확인하고, 
+          '(select prof_name from LECTURE where l_id in (select l_id from COURSE where c_id =? and beacon_id = ?));',  // c_id와 beacon_id가 올바른지 확인한다.          
+          select_sql2 = 'select state from COURSE where c_id = ?',
+          update_sql = 'update COURSE set state = ?, real_start_time = ?;';
+    const select_params = _.toArray(temp);
+    let state, tmpTime1 = new Date(),
+        tmpTime2 = moment(tmpTime1).add(9, 'hours'), tmpTime3 = tmpTime2.toISOString(), currentTime = tmpTime3.substring(11, 19);     // 현재 시간을 ISO 형식 날짜로 표현한다.          
+    let update_params = [];
 
-/* 
-    1. 강의 테이블에 강의 상태 속성 추가
-    2. 수업 시작/종료 기능
-    3. 수업 시작 종료를 기준으로 출석 기능 재구성
-    4. 해당 강의 상태 가져오기 (한 학생이 수강하는 모든 강의인지 아니면 한 개 강의인지 선우형한테 물어보기)
-    5. 강의 화면 - 출결 수정
-    6. 교수 출결 통계 화면 - 출결 수정
-    7. 교수/학생 - 출결 통계 확인
-    8. 푸시 기능
-*/
-
-// 출석(학생)(B)  -- 교수가 수업 시작하면, 출석 시작. 그 전까지는 이 요청이 올 경우 출석 대기 중.
-router.post('/attendance', (req, res) => { 
-    const c_id = req.body.c_id,
-          beacon_id = req.body.beacon_id,
-          tmpTime1 = new Date(),
-          tmpTime2 = moment(tmpTime1).add(9, 'hours'),
-          tmpTime3 = tmpTime2.toISOString(),
-          currentDate = tmpTime3.substring(0, 10),       // 오늘 날짜를 ISO 형식 날짜로 표현한다.
-          currentTime = tmpTime3.substring(11, 19),      // 현재 시간을 ISO 형식 날짜로 표현한다.
-          select_sql = 'select start_time, end_time, beacon_id from COURSE where c_id = ?',
-          insert_sql = 'insert into ATTENDENCE (a_date, c_id, attend) values (?,?,?);',
-          params = [currentDate, c_id];
-    let attend;
-        
     pool.getConnection(function(err, connection) {
         if (err) throw err;
-        var query = connection.query(select_sql, c_id, function(err, rows) {
+        var select_query = connection.query(select_sql, select_params, function(err, rows) {
             if (err) {
                 connection.release();
                 throw err;   
             } else {
                 if (rows.length === 0) {
-                    res.status(400).json({false: '잘못된 수강ID 입니다.'});
+                    res.status(400).json({false: '잘못된 강의 혹은 강의실입니다.'});
                     connection.release();
                 } else {
-                    if (beacon_id === rows[0].beacon_id) {  // 비콘아이디가 일치하는지(올바른 강의에 출석하는지) 확인 
-                        if (rows[0].start_time >= currentTime) {    // 시작시간보다 출석이 이르거나 같다면 
+                    if (rows[0].u_id == u_id && rows[0].u_role === 'prof') { // 검색 결과로 나온 u_id가 요청을 보내온 u_id(해당 강의의 교수)와 같고, role이 prof(교수)라면,
+                        var select_query2 = connection.query(select_sql2, c_id, function(err, rows2) {
+                            if (err) {
+                                connection.release();
+                                throw err;   
+                            } else {
+                                state = rows2[0].state;                                
+                                if (state === '수업 준비 중') {     // 수업 시작하는 경우에는 real_start_time을 현재시간으로 업데이트한다.
+                                    state = '수업 중';
+                                } else if (state === '수업 중') {   // 그 외의 경우에는 real_start_time에 null값을 넣는다.
+                                    state = '수업 종료';
+                                    currentTime = null;
+                                } else {                            // 그 외의 경우에는 real_start_time에 null값을 넣는다.
+                                    state = '수업 준비 중';
+                                    currentTime = null;
+                                }
+                                update_params.push(state, currentTime);
+                                console.log(update_params);                                
+                                var update_query = connection.query(update_sql, update_params, function(err, rows3) {
+                                    if (err) {
+                                        connection.release();
+                                        throw err;   
+                                    } else {
+                                        if (rows.length === 0) {
+                                            res.status(400).json({false: '잘못된 강의 혹은 강의실입니다.'});
+                                            connection.release();
+                                        } else {
+                                            res.status(200).json({success: '수업 상태 변경을 성공하였습니다.'});
+                                            connection.release();
+                                        }
+                                    }                        
+                                }); 
+                            }   
+                        });             
+                    } else {
+                        res.status(400).json({false: '강의 시작 및 종료는 해당 강의의 교수만 할 수 있습니다.'});
+                        connection.release();
+                    }
+                }
+            };
+        });    
+    });
+});
+
+// 강의 상태 조회(학생)(B)
+router.get('/lecturestate/:u_id/:l_id', (req, res) => {
+    const temp = _.pick(req.params, ['u_id', 'l_id']),
+          sql = 'select state from COURSE where  u_id = ? and l_id = ?;'
+    const params = _.toArray(temp);
+    
+    pool.getConnection(function(err, connection) {
+        if (err) throw err;
+        var query = connection.query(sql, params, function(err, rows) {
+            if (err) {
+                connection.release();
+                throw err;   
+            } else {
+                if (rows.length === 0) {
+                    res.status(400).json({false: '강의 상태 조회에 실패했습니다.'});
+                    connection.release();
+                } else {
+                    res.status(200).json(rows[0]);   // 유저 아이디(학생)와 강의 아이디로 검색한 강의의 상태를 반환
+                    connection.release();
+                }
+            }
+        });
+    });    
+});
+
+// 출석(학생)(B)
+router.post('/attendance', (req, res) => { 
+    const c_id = req.body.c_id,
+          temp = _.pick(req.body, ['c_id', 'beacon_id']),
+          tmpTime1 = new Date(),
+          tmpTime2 = moment(tmpTime1).add(9, 'hours'), tmpTime3 = tmpTime2.toISOString(), currentTime = tmpTime3.substring(11, 19),      // 현재 시간을 ISO 형식 날짜로 표현한다.
+          currentDate = tmpTime3.substring(0, 10),       // 오늘 날짜를 ISO 형식 날짜로 표현한다.          
+          select_sql = 'select state, real_start_time, start_time, end_time from COURSE where c_id = ? and beacon_id = ?', // 올바른 강의에 출석하는지 && 비콘아이디가 일치하는지 확인 
+          insert_sql = 'insert into ATTENDENCE (a_date, c_id, attend) values (?,?,?);',
+          select_params = _.toArray(temp), insert_params = [currentDate, c_id];
+    let attend;
+
+    pool.getConnection(function(err, connection) {
+        if (err) throw err;
+        var select_query = connection.query(select_sql, select_params, function(err, rows) {
+            const realtmp = moment(rows[0].real_start_time, 'hh:mm:ss'), realtmp2 = moment(realtmp).add({minutes:1, hours:9}), 
+                  realtmp3 = realtmp2.toISOString(), realtime = realtmp3.substring(11, 19),     // 지각 기준시간1(교수가 실제로 강의 시작 후 1분 뒤) 계산
+                  starttmp = moment(rows[0].start_time, 'hh:mm:ss'), starttmp2 = moment(starttmp).add({minutes:1, hours:9}), 
+                  starttmp3 = starttmp2.toISOString(), deadline = starttmp3.substring(11, 19);  // 지각 기준시간2(데드라인) 계산 
+            if (err) {
+                connection.release();
+                throw err;   
+            } else {
+                if (rows.length === 0) {
+                    res.status(400).json({false: '수강ID 혹은 비콘ID가 잘못되었습니다.'});
+                    connection.release();
+                } else {                    
+                    if (rows[0].state === '수업 준비 중') {     // 수업 준비 중 일때 출석하면 출석 대기 중.    
+                        attend = '출석 대기 중';                    
+                    } else if (rows[0].state === '수업 중' && rows[0].real_start_time <= rows[0].start_time) {  // 교수가 실제로 수업을 시작한 시간이 수업 시작시간보다 빠르거나 같을경우.                        
+                        if (currentTime <= deadline) {           // 현재 시간이 데드라인보다 이르거나 같으면 출석처리
                             attend = '출석';
-                        } else if (rows[0].end_time < currentTime) {    // 종료시간이 지나도 출석이 없으면
-                            attend = '결석';
-                        } else {    // 둘 다 아니라면 즉, 시작시간과 종료시간 사이면 
+                        } else if (currentTime > deadline) {     // 현재 시간이 데드라인보다 늦었으면 지각처리
                             attend = '지각';
                         }
-                        params.push(attend);
-                        var query = connection.query(insert_sql, params, function(err, rows2) {
-                            res.status(200).json({success: '출결처리를 성공하였습니다.'});
-                            connection.release();
-                        });
-                    } else {
-                        res.status(400).json({false: '잘못된 비콘ID 입니다.'});
+                    } else if (rows[0].state === '수업 중' && rows[0].real_start_time > rows[0].start_time) {  // 교수가 실제로 수업을 시작한 시간이 수업 시작시간보다 늦었을 경우.
+                        if (currentTime <= realtime) {          // 현재 시간이 교수가 수업을 실제로 시작한 시간 + 1분보다 이하면 출석처리
+                            attend = '출석';
+                        } else if (currentTime > realtime) {    // 현재 시간이 교수가 수업을 실제로 시작한 시간 + 1분을 넘었을 경우 지각처리
+                            attend = '지각';
+                        }                                            
+                    } else if (rows[0].state === '수업 종료') {                       
+                       attend = '결석';
+                    }
+                    insert_params.push(attend);
+                    var insert_query = connection.query(insert_sql, insert_params, function(err, rows2) {
+                        res.status(200).json({success: '출결처리를 성공하였습니다.'});
                         connection.release();
-                    }               
+                    });              
                 }
             }
         });
     });
 });
+
 
 module.exports = router;

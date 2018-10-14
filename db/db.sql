@@ -33,6 +33,8 @@ CREATE TABLE COURSE (    -- 수강 테이블
     student_id INT NOT NULL,                -- 학번
     l_id SMALLINT,                         
     l_name VARCHAR(30) NOT NULL,            -- 강의명 (개설 시 입력받는 값)
+    state VARCHAR(30) DEFAULT '수업 준비 중', -- 강의 상태
+    real_start_time TIME,                   -- 강의 상태 변경 시간(교수가 실제로 수업 시작한 시간)
     start_time TIME,                        -- 강의 시작시간 (개설 시 입력받는 값)
     end_time TIME,                          -- 강의 종료시간 (개설 시 입력받는 값)    
     beacon_id VARCHAR(50),                  -- 비콘 아이디
