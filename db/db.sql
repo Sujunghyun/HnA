@@ -27,21 +27,21 @@ CREATE TABLE LECTURE (    -- 강의 테이블
 ) ENGINE=innoDB DEFAULT CHARSET=utf8;
 
 CREATE TABLE COURSE (    -- 수강 테이블
-    c_id INT AUTO_INCREMENT,                -- 수강 일련번호 
+    c_id INT AUTO_INCREMENT,                    -- 수강 일련번호 
     u_id VARCHAR(30),                      
-    u_name VARCHAR(20) NOT NULL,            -- 사용자명
-    student_id INT NOT NULL,                -- 학번
+    u_name VARCHAR(20) NOT NULL,                -- 사용자명
+    student_id INT NOT NULL,                    -- 학번
     l_id SMALLINT,                         
-    l_name VARCHAR(30) NOT NULL,            -- 강의명 (개설 시 입력받는 값)
-    state VARCHAR(30) DEFAULT '수업 준비 중', -- 강의 상태
-    real_start_time TIME,                   -- 강의 상태 변경 시간(교수가 실제로 수업 시작한 시간)
-    start_time TIME,                        -- 강의 시작시간 (개설 시 입력받는 값)
-    end_time TIME,                          -- 강의 종료시간 (개설 시 입력받는 값)    
-    beacon_id VARCHAR(50),                  -- 비콘 아이디
-    PRIMARY KEY (c_id),                     -- 기본키. 수강 일련번호
-    FOREIGN KEY (u_id)                      -- 외래키. 토큰
+    l_name VARCHAR(30) NOT NULL,                -- 강의명 (개설 시 입력받는 값)
+    state VARCHAR(30) DEFAULT '수업 준비 중',    -- 강의 상태
+    real_start_time TIME,                       -- 강의 상태 변경 시간(교수가 실제로 수업 시작한 시간)
+    start_time TIME,                            -- 강의 시작시간 (개설 시 입력받는 값)
+    end_time TIME,                              -- 강의 종료시간 (개설 시 입력받는 값)    
+    beacon_id VARCHAR(50),                      -- 비콘 아이디
+    PRIMARY KEY (c_id),                         -- 기본키. 수강 일련번호
+    FOREIGN KEY (u_id)                          -- 외래키. 토큰
     REFERENCES USER(u_id),
-    FOREIGN KEY (l_id)                      -- 외래키. 강의 일련번호
+    FOREIGN KEY (l_id)                          -- 외래키. 강의 일련번호
     REFERENCES LECTURE(l_id)
 ) ENGINE=innoDB DEFAULT CHARSET=utf8;
 
