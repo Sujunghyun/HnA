@@ -1,7 +1,7 @@
 const mysql = require('mysql');
 const generic_pool = require('generic-pool');
-// const config = require('./db_config').local;
-const config = require('./db_config').imsi;
+const config = require('./db_config').local;
+// const config = require('./db_config').imsi;
 
 module.exports = function () {
   const pool = mysql.createPool({
