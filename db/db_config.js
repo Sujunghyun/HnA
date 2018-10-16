@@ -2,7 +2,7 @@ module.exports = (function () {
     return {
       local: { // localhost
         host: 'localhost',
-        user: 'root',
+        user: 'sjh',
         password: '1111',
         database: 'hna',
       },
