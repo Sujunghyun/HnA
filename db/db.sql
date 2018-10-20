@@ -19,6 +19,7 @@ CREATE TABLE LECTURE (    -- 강의 테이블
     l_semester TINYINT NOT NULL,                 -- 학기 (개설 시 입력받는 값)
     l_day VARCHAR(5) NOT NULL,                   -- 강의 요일 (개설 시 입력받는 값)
     l_class VARCHAR(2) NOT NULL,                 -- 분반 (개설 시 입력받는 값)
+    identifier VARCHAR(20) NOT NULL,             -- 사번 (전달받는 값)
     prof_name VARCHAR(20) NOT NULL,              -- 교수이름 (개설 시 입력받는 값)
     start_time TIME,                             -- 강의 시작시간 (개설 시 입력받는 값)
     end_time TIME,                               -- 강의 종료시간 (개설 시 입력받는 값)
@@ -30,7 +31,7 @@ CREATE TABLE COURSE (    -- 수강 테이블
     c_id INT AUTO_INCREMENT,                    -- 수강 일련번호 
     u_id VARCHAR(30),                      
     u_name VARCHAR(20) NOT NULL,                -- 사용자명
-    identifier VARCHAR(20) NOT NULL,            -- 학번/사번
+    identifier VARCHAR(20) NOT NULL,            -- 학번
     l_id SMALLINT,                         
     l_name VARCHAR(30) NOT NULL,                -- 강의명 (개설 시 입력받는 값)
     state VARCHAR(30) DEFAULT '수업 준비 중',    -- 강의 상태
@@ -49,7 +50,7 @@ CREATE TABLE ATTENDANCE (    -- 출결 테이블 // 수강일련번호로 유저
     a_id INT AUTO_INCREMENT,                 -- 출결 일련번호
     a_date VARCHAR(10) NOT NULL,             -- 강의 날짜
     c_id INT,                                -- 수강정보 조회 시 필요.
-    attend VARCHAR(20) NOT NULL,             -- 출결여부 (출석, 지각, 결석, 출결기타(병결, 조퇴, 휴강, etc...))
+    attend VARCHAR(50) NOT NULL,             -- 출결여부 (출석, 지각, 결석, 출결기타(병결, 조퇴, 휴강, etc...))
     depart TINYINT(1) DEFAULT 0,             -- 이탈여부 DEFAULT 값은 0(이탈안함), TINYINT(1)은 BOOLEAN 값을 표현.
     PRIMARY KEY (a_id),                      -- 기본키. 출결 일련번호
     FOREIGN KEY (c_id)                       -- 외래키. 수강 일련번호
