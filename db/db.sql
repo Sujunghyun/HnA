@@ -21,10 +21,20 @@ CREATE TABLE LECTURE (    -- 강의 테이블
     l_class VARCHAR(2) NOT NULL,                 -- 분반 (개설 시 입력받는 값)
     identifier VARCHAR(20) NOT NULL,             -- 사번 (전달받는 값)
     prof_name VARCHAR(20) NOT NULL,              -- 교수이름 (개설 시 입력받는 값)
+    beacon_id VARCHAR(50),                       -- 비콘 아이디
     start_time TIME,                             -- 강의 시작시간 (개설 시 입력받는 값)
     end_time TIME,                               -- 강의 종료시간 (개설 시 입력받는 값)
     supplement TINYINT(1) DEFAULT 0,             -- 보강여부 DEFAULT 값은 0(보강아님)
     PRIMARY KEY (l_id)                           -- 기본키. 강의 일련번호
+) ENGINE=innoDB DEFAULT CHARSET=utf8;
+
+CREATE TABLE LECTURE_DT (    -- 강의 일자 테이블
+    ld_id SMALLINT AUTO_INCREMENT,      -- 강의 일자 일련번호
+    l_id SMALLINT,                      -- 강의 일련번호
+    l_date  VARCHAR(10),                -- 강의 요일 (개설 시 입력받는 값)
+    PRIMARY KEY (ld_id),                -- 기본키. 강의 일자 일련번호
+    FOREIGN KEY (l_id)                  -- 외래키. 강의 일련번호
+    REFERENCES LECTURE(l_id)    
 ) ENGINE=innoDB DEFAULT CHARSET=utf8;
 
 CREATE TABLE COURSE (    -- 수강 테이블
@@ -38,7 +48,6 @@ CREATE TABLE COURSE (    -- 수강 테이블
     real_start_time TIME,                       -- 강의 상태 변경 시간(교수가 실제로 수업 시작한 시간)
     start_time TIME,                            -- 강의 시작시간 (개설 시 입력받는 값)
     end_time TIME,                              -- 강의 종료시간 (개설 시 입력받는 값)    
-    beacon_id VARCHAR(50),                      -- 비콘 아이디
     PRIMARY KEY (c_id),                         -- 기본키. 수강 일련번호
     FOREIGN KEY (u_id)                          -- 외래키. 토큰
     REFERENCES USER(u_id),
