@@ -3,7 +3,8 @@
 
 const express = require('express');
 const router = express.Router();
-const pool = require('../db/db_pool')
+const pool = require('../db/db_pool');
+const fcm = require('./fcm');
 const _ = require('lodash');
 const moment = require('moment');
 
@@ -14,7 +15,7 @@ router.post('/login', (req, res) => {
   console.log('로그인');  
   const u_id = req.body.u_id,
         select_sql = 'select * from USER where u_id = ?;',        
-        stu_sql = 'select c.c_id, l.l_id, l.l_name, l.l_room, l.l_grade, l.l_semester, l.l_day, l.l_class, prof_name, l.start_time, l.end_time, supplement ' + 
+        stu_sql = 'select c.c_id, l.l_id, l.l_name, l.l_room, l.l_grade, l.l_semester, l.l_day, l.l_class, prof_name, beacon_id, l.start_time, l.end_time, supplement ' + 
                   'from LECTURE l JOIN COURSE c where l.l_id = c.l_id and c.u_id = ?;',
         prof_sql = 'select * from LECTURE where identifier = ?;';
   let identifier, isExisted, user_info = [];
@@ -643,9 +644,22 @@ router.get('/self_check/:c_id/:a_date', (req, res) => {
 // beacon 등록/수정 기능(교수)(B) 
 router.put('/reg_beacon', (req, res) => {
   console.log('beacon 등록');
-  const temp = _.pick(req.body, ['beacon_id', 'l_id']),
-    sql = 'update LECTURE set beacon_id = ? where l_id = ?;';
+  const l_id = req.body.l_id,
+        beacon_id = req.body.beacon_id,
+        temp = _.pick(req.body, ['beacon_id', 'l_id']),
+        sql = 'update LECTURE set beacon_id = ? where l_id = ?;',
+        find_topic_sql = 'select u_id from COURSE where l_id =?';
   const params = _.toArray(temp);
+  let topic;
+  let message = {
+    data: {
+      status : '0',
+      l_id: '3',
+      l_room: '304',
+      beacon_id: beacon_id
+    },
+    topic: topic
+  };  
 
   pool.getConnection(function (err, connection) {
     if (err) throw err;
@@ -658,8 +672,26 @@ router.put('/reg_beacon', (req, res) => {
           res.status(400).json({ false: 'beacon 등록에 실패하였습니다.' });
           connection.release();
         } else {
-          res.status(200).json({ success: 'beacon 등록에 성공하였습니다.' });
-          connection.release();
+          res.status(200).json({ success: 'beacon 등록에 성공하였습니다.' });          
+          var query = connection.query(find_topic_sql, l_id, function (err, rows) {
+            if (err) {
+              connection.release();
+              throw err;
+            } else {
+              if (rows.length === 0) {
+                res.status(400).json({ false: '강의실 변경 알림을 실패하였습니다.' });  // l_id 오류
+                connection.release();
+              } else {
+                for (let i=0; i<rows.length; i++) {
+                  topic = rows[i].u_id;
+                  message.topic = topic;
+                  console.log(topic);           
+                  fcm.send(message);
+                }
+                connection.release();
+              }
+            }            
+          });                    
         }
       }
     });
@@ -912,6 +944,7 @@ router.post('/attendance', (req, res) => {
         currentDate = tmpTime3.substring(0, 10),       // 오늘 날짜를 ISO 형식 날짜로 표현한다.          
         select_sql = 'select state, real_start_time, start_time, end_time from COURSE where c_id = ? and l_id IN (select l_id from LECTURE where beacon_id = ?);', // 올바른 강의에 출석하는지 && 비콘아이디가 일치하는지 확인 
         insert_sql = 'insert into ATTENDANCE (a_date, c_id, attend) values (?,?,?);',
+        a_sql = ';',  // 이미 출석을 한 학생이라면 저장하지 않아도 됨.(요청받은 a_date, c_id, attend가 이미 ATTENDANCE DB에 저장되어 있으면 저장하지 않도록 처리. 이 때 반환값은 필요 없음.)
         select_params = _.toArray(temp), insert_params = [currentDate, c_id];
   let attend;
 
@@ -1034,229 +1067,6 @@ router.put('/revise_attendance', (req, res) => {
   });
 });
 
-// 출결 데이터(통계) 조회(교수)(B)
-router.get('/statistic/:l_id/:u_role', (req, res) => {
-  console.log('교수용 출결 통계');
-  const l_id = req.params.l_id,
-        u_role = req.params.u_role,
-        date_sql = 'SELECT l_date from LECTURE_DT where l_id = ?;',
-        count_sql = 'SELECT ' + 
-                      'COUNT(CASE WHEN attend = ? THEN 1 END) attend_cnt, ' +    // 출석 카운트  
-                      'COUNT(CASE WHEN attend = ? THEN 1 END) lateness_cnt, ' +  // 지각 카운트
-                      'COUNT(CASE WHEN attend = ? THEN 1 END) absence_cnt ' +    // 결석 카운트 
-                    'FROM ATTENDANCE where c_id in (select c_id from COURSE where l_id = ?) and a_date = ?;',
-        select_stu_sql = 'select u.identifier, u.u_name, u.photo_url from USER u join COURSE c using (u_id) where l_id = ?;', 
-        select_attned_sql = 'select identifier, attend from COURSE NATURAL JOIN ATTENDANCE where a_date = ? and l_id = ?;';  
 
-  let prof_stats = [], count_list = [], date_list = [], count_params = ['출석', '지각', '결석', l_id];
-
-  pool.getConnection(function (err, connection) {
-    if (err) throw err;
-    if (u_role == 'prof') {
-      var date_query = connection.query(date_sql, l_id, function (err, date_result) {        
-        if (err) {
-          connection.release();
-          throw err;
-        } else {
-          if (date_result.length === 0) {
-            res.status(400).json({ false: '강의 일자 조회에 실패했습니다.' });    // l_id 오류
-            connection.release();
-          } else {
-            for (let i=0; i<date_result.length; i++) {
-              date_list.push(date_result[i].l_date);
-              count_params.push(date_list[i]);              
-              // console.log(count_params);                  
-              var count_query = connection.query(count_sql, count_params, function (err, count_result) {           
-                if (err) {
-                  connection.release();
-                  throw err;
-                } else {
-                  if (count_result.length === 0) {
-                    res.status(400).json({ false: '출결 데이터 카운트에 실패했습니다.' });    // body(l_id || date) 오류
-                    connection.release();
-                  } else {
-                    count_list.push(count_result);                    
-                    console.log(count_list[0]);
-                    
-                    for (let i=0; i<date_result.length; i++) {
-                      prof_stats[i] = {};
-                      prof_stats[i].a_date = date_list[i];
-                      prof_stats[i].attend_cnt = count_list[i].attend_cnt;
-                      prof_stats[i].lateness_cnt = count_list[i].lateness_cnt;
-                      prof_stats[i].absence_cnt = count_list[i].absence_cnt;
-                    }
-                    res.status(200).json(prof_stats);                        
-                  }
-                }
-              }); count_params.pop();              
-            } 
-            res.status(200).json(prof_stats);    // body(l_id || date) 오류
-            connection.release();
-          }
-        }              
-      });      
-    }
-  });
-});
-
-
-router.get('/dateee/:l_id', (req, res) => {
-  const l_id = req.params.l_id,
-        date_sql = 'SELECT l_date from LECTURE_DT where l_id = ?;';
-
-  dateQuery(date_sql, l_id, function(err, date_list) {
-    if (err) throw err;      
-    if (date_list == 0) {
-      res.status(400).json({ false: '강의 일자 조회에 실패했습니다.' });
-    } else if (date_list) {
-      res.status(200).json(date_list);    
-    }
-  });
-});
-
-router.get('/counttt/:l_id', (req, res) => {
-  const l_id = req.params.l_id,
-        count_sql = 'SELECT ' + 
-          'COUNT(CASE WHEN attend = ? THEN 1 END) attend_cnt, ' +    // 출석 카운트  
-          'COUNT(CASE WHEN attend = ? THEN 1 END) lateness_cnt, ' +  // 지각 카운트
-          'COUNT(CASE WHEN attend = ? THEN 1 END) absence_cnt ' +    // 결석 카운트 
-        'FROM ATTENDANCE where c_id in (select c_id from COURSE where l_id = ?) and a_date = ?;';
-
-  // deteQuery의 결과인 날짜데이터를 여기에 push해야함.
-  let count_params = ['출석', '지각', '결석', l_id];
-
-  countQuery(count_sql, count_params, function(err, count_list) {
-    if (err) throw err;      
-    if (count_list == 0) {
-      res.status(400).json({ false: '강의 일자 조회에 실패했습니다.' });
-    } else if (count_list) {
-      res.status(200).json(count_list);      
-    }
-  });
-});
-
-router.get('/attenddd1/:l_id', (req, res) => {
-  const l_id = req.params.l_id,
-        select_stu_sql = 'select u.identifier, u.u_name, u.photo_url from USER u join COURSE c using (u_id) where l_id = ?;',
-        select_attned_sql = 'select identifier, attend from COURSE NATURAL JOIN ATTENDANCE where a_date = ? and l_id = ?;';    
-
-  attendQuery(select_stu_sql, l_id, function(err, stu_list) {
-    if (err) throw err;      
-    if (stu_list == 0) {
-      res.status(400).json({ false: '강의 일자 조회에 실패했습니다.' });
-    } else if (stu_list) {
-      res.status(200).json(stu_list);
-    }
-  });
-});
-
-
-
-
-// ================== statistic helper function ================== //
-
-// date
-const dateQuery = (sql, params, callback) => {
-  let date_list = [];
-  pool.getConnection(function (err, connection) {
-    if (err) throw err;
-    connection.query(sql, params, function (err, rows) {
-      if (err) {
-        callback(err, null);  
-        connection.release();
-        throw err;
-      } else {
-        if (rows.length === 0) {
-          callback(null, 0);          
-          connection.release();
-        } else {
-          for (let i=0; i<rows.length; i++) {
-            date_list.push(rows[i].l_date);
-          }
-        }
-      }
-    callback(null, date_list);
-    connection.release();        
-    });
-  });
-}
-
-// count
-const countQuery = (sql, params, callback) => {
-  let count_list = [];
-  pool.getConnection(function (err, connection) {
-    if (err) throw err;
-    connection.query(sql, params, function (err, rows) {
-      if (err) {
-        callback(err, null);  
-        connection.release();
-        throw err;
-      } else {
-        if (rows.length === 0) {
-          callback(null, 0);          
-          connection.release();
-        } else {
-          for (let i=0; i<rows.length; i++) {
-            count_list.push(rows[0]);         // cnt값 3개를 리스트에 넣음
-          }
-        }
-      }
-    callback(null, count_list);
-    connection.release();        
-    });
-  });
-}
-
-// attend
-const attendQuery = (sql, params, callback) => {
-  let attend_list = [];
-  pool.getConnection(function (err, connection) {
-    if (err) throw err;
-    connection.query(sql, params, function (err, rows) {
-      if (err) {
-        callback(err, null);  
-        connection.release();
-        throw err;
-      } else {
-        if (rows.length === 0) {
-          callback(null, 0);          
-          connection.release();
-        } else {
-          for (let i=0; i<rows.length; i++) {
-            attend_list.push(rows[0]);         // cnt값 3개를 리스트에 넣음
-          }
-        }
-      }
-    callback(null, attend_list);
-    connection.release();        
-    });
-  });
-}
-
-// attend
-const attendQuery = (sql, params, callback) => {
-  let attend_list = [];
-  pool.getConnection(function (err, connection) {
-    if (err) throw err;
-    connection.query(sql, params, function (err, rows) {
-      if (err) {
-        callback(err, null);  
-        connection.release();
-        throw err;
-      } else {
-        if (rows.length === 0) {
-          callback(null, 0);          
-          connection.release();
-        } else {
-          for (let i=0; i<rows.length; i++) {
-            attend_list.push(rows[0]);         // cnt값 3개를 리스트에 넣음
-          }
-        }
-      }
-    callback(null, attend_list);
-    connection.release();        
-    });
-  });
-}
 
 module.exports = router;
