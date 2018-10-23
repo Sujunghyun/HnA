@@ -363,11 +363,17 @@ router.delete('/lecture', (req, res) => {
   const l_id = req.headers.l_id,
         delete_attend_sql = 'delete from ATTENDANCE where c_id in (select c_id from COURSE where l_id = ?);',    //  입력받은 l_id를 수강하는 모든 출결데이터를 삭제
         multi_delete_sql = 'delete c, l from COURSE as c INNER JOIN LECTURE as l ON c.l_id = l.l_id where c.l_id = ?',    //  입력받은 l_id의 강의와 관련 수강데이터를 삭제
-        delete_lecture_sql = 'delete from LECTURE where l_id = ?;';
+        delete_lecture_sql = 'delete from LECTURE where l_id = ?;', find_topic_sql = 'select * from COURSE where l_id = ?';
 
+  let topic;
+  let message = {
+    data: { status : '1', l_id: l_id },
+    topic: topic
+  };
+  
   pool.getConnection(function (err, connection) {
     if (err) throw err;
-    var delete_attend_query = connection.query(delete_attend_sql, l_id, function (err, rows) {
+    var find_topic_query = connection.query(find_topic_sql, l_id, function (err, rows) {
       if (err) {
         connection.release();
         throw err;
@@ -375,36 +381,53 @@ router.delete('/lecture', (req, res) => {
         if (rows.length === 0) {
           res.status(400).json({ false: '출결데이터 삭제에 실패하였습니다.' });  // l_id(body) 오류
           connection.release();
-        } else {      
-          var delete_lecture_query = connection.query(multi_delete_sql, l_id, function (err, rows2) {
+        } else {  
+          var delete_attend_query = connection.query(delete_attend_sql, l_id, function (err, rows2) {
             if (err) {
               connection.release();
               throw err;
             } else {
               if (rows2.length === 0) {
-                res.status(400).json({ false: '폐강 처리에 실패하였습니다.' });  // l_id(body) 오류
+                res.status(400).json({ false: '출결데이터 삭제에 실패하였습니다.' });  // l_id(body) 오류
                 connection.release();
-              } else if (rows.affectedRows === 0) {   // 수강 데이터가 없는 경우. 강의 데이터가 삭제되지 않음.
-                var delete_lecture_query = connection.query(delete_lecture_sql, l_id, function (err, rows) {
+              } else {      
+                var multi_delete_query = connection.query(multi_delete_sql, l_id, function (err, rows3) {
                   if (err) {
                     connection.release();
                     throw err;
                   } else {
-                    if (rows.length === 0) {
+                    if (rows3.length === 0) {
                       res.status(400).json({ false: '폐강 처리에 실패하였습니다.' });  // l_id(body) 오류
                       connection.release();
-                    } else {   
-                      res.status(200).json({ success: '폐강 처리에 성공하였습니다' });  // 아무도 수강하지 않은 강의를 폐강하는 경우.
+                    } else if (rows3.affectedRows === 0) {   // 수강 데이터가 없는 경우. 강의 데이터가 삭제되지 않음.
+                      var delete_lecture_query = connection.query(delete_lecture_sql, l_id, function (err, rows4) {
+                        if (err) {
+                          connection.release();
+                          throw err;
+                        } else {
+                          if (rows4.length === 0) {
+                            res.status(400).json({ false: '폐강 처리에 실패하였습니다.' });  // l_id(body) 오류
+                            connection.release();
+                          } else {   
+                            res.status(200).json({ success: '폐강 처리에 성공하였습니다' });  // 아무도 수강하지 않은 강의를 폐강하는 경우.
+                            connection.release();
+                          }
+                        }
+                      });
+                    } else {  
+                      res.status(200).json({ success: '폐강 처리에 성공하였습니다' });
+                      for (let i=0; i<rows.length; i++) {
+                        topic = rows[i].u_id;
+                        message.topic = topic;
+                        fcm.send(message);
+                      }
                       connection.release();
                     }
                   }
                 });
-              } else {  
-                res.status(200).json({ success: '폐강 처리에 성공하였습니다' });
-                connection.release();
               }
             }
-          });
+          });          
         }
       }
     });
@@ -493,28 +516,40 @@ router.post('/register', (req, res) => {
         } else {
           const params2 = _.toArray(rows[0]);
           const params3 = [...params1, ...params2];
-          var insert = connection.query(insert_sql, params3, function (err, rows2) {
+          var confirm = connection.query(select_sql2, params1, function (err, rows2) {
             if (err) {
               connection.release();
               throw err;
             } else {
-              if (rows2.length === 0) {
-                res.status(400).json({ false: '수강 신청에 실패하였습니다.' });  // params3 오류
-                connection.release();
-              } else {
-                var confirm = connection.query(select_sql2, params1, function (err, rows3) {
+              if (rows2.length === 0) {   // 검색결과 c_id가 없는 즉, 아직 수강신청을 하지 않은 경우 수강신청 진행
+                var insert = connection.query(insert_sql, params3, function (err, rows3) {
                   if (err) {
                     connection.release();
                     throw err;
                   } else {
-                    c_id = rows3[0].c_id;
-                    res.status(200).json({ c_id, success: '수강 신청에 성공하였습니다.' });
-                    connection.release();
+                    if (rows3.length === 0) {
+                      res.status(400).json({ false: '수강 신청에 실패하였습니다.' });  // params3 오류
+                      connection.release();
+                    } else {
+                      var confirm = connection.query(select_sql2, params1, function (err, rows4) {
+                        if (err) {
+                          connection.release();
+                          throw err;
+                        } else {
+                          c_id = rows4[0].c_id;
+                          res.status(200).json({ c_id, success: '수강 신청에 성공하였습니다.' });
+                          connection.release();
+                        }
+                      });                    
+                    }
                   }
-                });                    
-              }
+                });
+              } else {  // 검색결과 c_id가 있는 즉, 이미 수강신청을 한 경우
+                res.status(400).json({ false: '이미 수강신청한 과목입니다.' });
+                connection.release();
+              }              
             }
-          });
+          });          
         }
       }
     });
@@ -569,7 +604,7 @@ router.get('/rollbook/:l_id/:a_date', (req, res) => {
         temp = _.pick(req.params, ['a_date', 'l_id']),        
         params = _.toArray(temp),
         select_stu_sql = 'select u.identifier, u.u_name, u.photo_url from USER u join COURSE c using (u_id) where l_id = ?',
-        select_attned_sql = 'select identifier, attend from COURSE NATURAL JOIN ATTENDANCE where a_date = ? and l_id = ?;';
+        select_attned_sql = 'select identifier, attend, real_attend_time, depart from COURSE NATURAL JOIN ATTENDANCE where a_date = ? and l_id = ?;';
 
   pool.getConnection(function (err, connection) {
     if (err) throw err;
@@ -590,6 +625,8 @@ router.get('/rollbook/:l_id/:a_date', (req, res) => {
               if (attend_list.length === 0) {  // 출결데이터 없는 경우 단순한 stu_list만 보낸다.
                 for (let i=0; i<stu_list.length; i++) {
                   stu_list[i].attend = '';
+                  stu_list[i].real_attend_time = '';
+                  stu_list[i].depart = 0;
                 }
                 res.status(200).json(stu_list);      // 출결데이터 없는 경우. attend 데이터에 빈 값을 할당해 전달
                 connection.release();   
@@ -598,6 +635,8 @@ router.get('/rollbook/:l_id/:a_date', (req, res) => {
                   for (let j=0; j<attend_list.length; j++) {
                     if (stu_list[i].identifier === attend_list[j].identifier) {
                       stu_list[i].attend = attend_list[j].attend;
+                      stu_list[i].real_attend_time = attend_list[j].real_attend_time;
+                      stu_list[i].depart = attend_list[j].depart;
                       break;
                     } else {
                       stu_list[i].attend = '결석';
@@ -615,11 +654,11 @@ router.get('/rollbook/:l_id/:a_date', (req, res) => {
   });
 });
 
-// 출결상태 확인(학생)(B) - 학생이 특정 수강 과목에 대한 자신의 출결상태를 확인한다.
+// 출결상태 확인(학생)(B) - 학생이 특정 수강 과목에 대한 자신의 출결상태를 확인한다.      // 반환값을 결석으로 할지 물어볼 것.
 router.get('/self_check/:c_id/:a_date', (req, res) => {
   console.log('출결상태 확인');
   const temp = _.pick(req.params, ['c_id', 'a_date']),    
-        sql = 'select attend from ATTENDANCE where c_id = ? and a_date = ?',
+        sql = 'select attend, depart from ATTENDANCE where c_id = ? and a_date = ?',
         params = _.toArray(temp);
 
   pool.getConnection(function (err, connection) {
@@ -630,7 +669,7 @@ router.get('/self_check/:c_id/:a_date', (req, res) => {
         throw err;
       } else {
         if (rows.length === 0) {
-          res.status(400).json({ false: '출결 상태 조회에 실패했습니다.' });
+          res.status(400).json({ false: '출결 상태 조회에 실패했습니다.' }); 
           connection.release();
         } else {
           res.status(200).json(rows[0]);   // 해당 강의를 듣는 학생들의 학번과 이름을 반환
@@ -644,20 +683,14 @@ router.get('/self_check/:c_id/:a_date', (req, res) => {
 // beacon 등록/수정 기능(교수)(B) 
 router.put('/reg_beacon', (req, res) => {
   console.log('beacon 등록');
-  const l_id = req.body.l_id,
-        beacon_id = req.body.beacon_id,
-        temp = _.pick(req.body, ['beacon_id', 'l_id']),
-        sql = 'update LECTURE set beacon_id = ? where l_id = ?;',
+  const l_id = req.body.l_id, beacon_id = req.body.beacon_id, l_room = req.body.l_room,
+        temp = _.pick(req.body, ['beacon_id', 'l_room', 'l_id']),
+        sql = 'update LECTURE set beacon_id = ?, l_room = ? where l_id = ?;',
         find_topic_sql = 'select u_id from COURSE where l_id =?';
   const params = _.toArray(temp);
   let topic;
   let message = {
-    data: {
-      status : '0',
-      l_id: '3',
-      l_room: '304',
-      beacon_id: beacon_id
-    },
+    data: { status : '0', l_id: l_id, l_room: l_room, beacon_id: beacon_id },
     topic: topic
   };  
 
@@ -685,7 +718,7 @@ router.put('/reg_beacon', (req, res) => {
                 for (let i=0; i<rows.length; i++) {
                   topic = rows[i].u_id;
                   message.topic = topic;
-                  console.log(topic);           
+                  console.log(topic);
                   fcm.send(message);
                 }
                 connection.release();
@@ -708,19 +741,23 @@ router.put('/lecture_state', (req, res) => {
                      '(select identifier from LECTURE where l_id = ? and beacon_id = ?);',  // identifier와 l_id, beacon_id가 올바른지 확인한다.
         select_sql2 = 'select state from COURSE where l_id = ?;',        
         update_sql = 'update COURSE set state = ?, real_start_time = ? where l_id = ?;',
-        call_sql = 'select * from ATTENDANCE where a_date = ? and c_id in (select c_id from COURSE where u_id = ? and l_id = ?);',
+        call_sql = 'select * from ATTENDANCE where a_date = ? and c_id in (select c_id from COURSE where l_id = ?);',
         absent_sql = 'update ATTENDANCE set attend = ? where c_id in (select c_id from COURSE where l_id = ? and state = ?);',
         ld_select_sql = 'select * from LECTURE_DT where l_id = ? and l_date = ?',
         ld_insert_sql = 'insert LECTURE_DT (l_id, l_date) values (?,?);',
+        find_topic_sql = 'select u_id from COURSE where l_id =?',
         select_params = _.toArray(temp);              
 
   let state, tmpTime1 = new Date(),
       tmpTime2 = moment(tmpTime1).add(9, 'hours'), tmpTime3 = tmpTime2.toISOString(), 
       currentDate = tmpTime3.substring(0, 10),       // 오늘 날짜를 ISO 형식 날짜로 표현한다. 
       currentTime = tmpTime3.substring(11, 19),     // 현재 시간을 ISO 형식 날짜로 표현한다.                
-      update_params = [], absent_params = [];
-      
-  const a_roll_call  = [currentDate, u_id, l_id], ld_params = [l_id, currentDate];
+      update_params = [], absent_params = [], topic,
+      message = {
+        data: { status : 'which num', l_id: l_id },
+        topic: topic
+      };
+  const a_roll_call  = [currentDate, l_id], ld_params = [l_id, currentDate];
   
   pool.getConnection(function (err, connection) {
     if (err) throw err;
@@ -779,15 +816,27 @@ router.put('/lecture_state', (req, res) => {
                                     if (ld2.length === 0) {   // 강의 일자 등록을 실패하면
                                       res.status(400).json({ false: '강의 일자 등록을 실패하였습니다.' });
                                       connection.release();
-                                    } else {
-                                      res.status(200).json({ success: '수업 상태 변경을 성공하였습니다.' });  // 수업 중인 경우, 강의 일자를 성공적으로 LECTURE_DT에 추가했을 경우
-                                      connection.release();
-                                    }
-                                  }
+                                    } else {                                                                            
+                                        res.status(200).json({ success: '수업 상태 변경을 성공하였습니다.' });  // 수업 중인 경우, 강의 일자를 성공적으로 LECTURE_DT에 추가했을 경우
+                                        connection.release();
+                                      }
+                                    }                                    
                                 });
                               } else {
-                                res.status(200).json({ success: '수업 상태 변경을 성공하였습니다.' });  // 수업 중인 경우, 해당 강의일자가 이미 등록되어 있는 경우
-                                connection.release();
+                                ordinaryQuery(connection, find_topic_sql, l_id, function(err, rows4) {
+                                  if (err) throw err;      
+                                  if (rows4 == 0) {
+                                    res.status(400).json({ false: '수업 시작 알림을 실패하였습니다.' });
+                                  } else {
+                                    message.data.status = '2';
+                                    for (let i=0; i<rows4.length; i++) {
+                                      topic = rows4[i].u_id;
+                                      message.topic = topic;
+                                      fcm.send(message);
+                                      }  
+                                    } 
+                                  });
+                                res.status(200).json({ success: '수업 상태 변경을 성공하였습니다.' });  // 수업 중인 경우, 해당 강의일자가 이미 등록되어 있는 경우                                  
                               }
                             }
                           });
@@ -810,17 +859,29 @@ router.put('/lecture_state', (req, res) => {
                                       connection.release();
                                     } else {
                                       res.status(200).json({ success: '수업 상태 변경을 성공하였습니다.' });  // 수업 종료 시 수업 상태 종료로 변경 및 결석자 처리
-                                      connection.release();
                                     }
                                   }
                                 });
-                              } else {
-                                res.status(200).json({ success: '수업 상태 변경을 성공하였습니다.' });  // 수업 종료 시 수업 상태 종료로 변경 및 결석자 처리
-                                connection.release();
+                              } else {    
+                                res.status(200).json({ success: '수업 상태 변경을 성공하였습니다.' });  // 수업 종료 시 수업 상태 종료로 변경 및 결석자가 없는 경우
                               }
+                              ordinaryQuery(connection, find_topic_sql, l_id, function(err, rows5) {   // 강의 시작 메시지는 여기서(첫 1회)만 보냄.
+                                if (err) throw err;      
+                                if (rows5 == 0) {
+                                  res.status(400).json({ false: '수업 종료 알림을 실패하였습니다.' });
+                                } else {
+                                  message.data.status = '3';
+                                  for (let i=0; i<rows5.length; i++) {
+                                    topic = rows5[i].u_id;
+                                    message.topic = topic;
+                                    fcm.send(message);
+                                  }
+                                }
+                              });
+                              // ============ 수업 종료 알림은 여기서 보냄. 대신, connection.release()도 여기서만 할 것.
                             }
                           });
-                        } else {
+                        } else {    // 수업 종료 => 수업 준비 중
                           res.status(200).json({ success: '수업 상태 변경을 성공하였습니다.' }); 
                           connection.release();
                         }                                           
@@ -943,10 +1004,13 @@ router.post('/attendance', (req, res) => {
         tmpTime2 = moment(tmpTime1).add(9, 'hours'), tmpTime3 = tmpTime2.toISOString(), currentTime = tmpTime3.substring(11, 19),      // 현재 시간을 ISO 형식 날짜로 표현한다.
         currentDate = tmpTime3.substring(0, 10),       // 오늘 날짜를 ISO 형식 날짜로 표현한다.          
         select_sql = 'select state, real_start_time, start_time, end_time from COURSE where c_id = ? and l_id IN (select l_id from LECTURE where beacon_id = ?);', // 올바른 강의에 출석하는지 && 비콘아이디가 일치하는지 확인 
-        insert_sql = 'insert into ATTENDANCE (a_date, c_id, attend) values (?,?,?);',
-        a_sql = ';',  // 이미 출석을 한 학생이라면 저장하지 않아도 됨.(요청받은 a_date, c_id, attend가 이미 ATTENDANCE DB에 저장되어 있으면 저장하지 않도록 처리. 이 때 반환값은 필요 없음.)
-        select_params = _.toArray(temp), insert_params = [currentDate, c_id];
-  let attend;
+        ascertain_sql = 'select * from ATTENDANCE where c_id = ? and a_date = ?;',
+        insert_sql = 'insert into ATTENDANCE (a_date, c_id, real_attend_time, attend) values (?,?,?,?);',
+        update_dept_sql = 'update ATTENDANCE set depart = ? where c_id = ? and a_date = ?;',
+        update_time_sql = 'update ATTENDANCE set real_attend_time = ? where c_id = ? and a_date = ?;',
+        select_params = _.toArray(temp), ascertain_params = [c_id, currentDate], 
+        insert_params = [currentDate, c_id, currentTime], update_time_params = [currentTime, c_id, currentDate];
+  let attend, depart;
 
   pool.getConnection(function (err, connection) {
     if (err) throw err;
@@ -992,19 +1056,74 @@ router.post('/attendance', (req, res) => {
             attend = '결석';
           }
           insert_params.push(attend);
-          var insert_query = connection.query(insert_sql, insert_params, function (err, rows2) {
+          var ascertain_query = connection.query(ascertain_sql, ascertain_params, function (err, rows2) {
             if (err) {
               connection.release();
               throw err;
             } else {
-              if (rows.length === 0) {
-                res.status(400).json({ false: '출결 처리를 실패하였습니다.' });
-                connection.release();
-              } else {
-                res.status(200).json({ success: '출결 처리를 성공하였습니다.' });
-                connection.release();
+              if (rows2.length === 0) {   //  요청 날짜 최초 출석 시, DB에 출석 데이터를 저장한다.
+                var insert_query = connection.query(insert_sql, insert_params, function (err, rows3) {
+                  if (err) {
+                    connection.release();
+                    throw err;
+                  } else {
+                    if (rows3.length === 0) {
+                      res.status(400).json({ false: '출결 처리를 실패하였습니다.' });
+                      connection.release();
+                    } else {
+                      res.status(200).json({ success: '출결 처리를 성공하였습니다.' });
+                      connection.release();
+                    }
+                  }
+                });
+              } else {    //  요청 날짜에 이미 출석했지만 이탈 여부 판별을 위해 계속 요청하는 경우
+                var update_time_query = connection.query(update_time_sql, update_time_params, function (err, rows4) {
+                  const temp_attend1 = moment(rows2[0].real_attend_time, 'hh:mm:ss'), temp_attend2 = moment(temp_attend1).add({ seconds: 5, hours: 9 });
+                  const temp_attend3 = temp_attend2.toISOString(), real_attend = temp_attend3.substring(11, 19)   // 이탈 기준시간(이전 출석 요청 이후 5초 뒤) 계산(졸작발표 후에는 30초로 수정할 것)                        
+                  if (real_attend < currentTime) {     // 이탈 여부 확인(5초 이상 차이) 마지막으로 요청했던 시간과 지금 요청시간(currentTime)이 5초 이상 차이나면
+                    depart = 1;
+                    ascertain_params.unshift(depart);
+                    ordinaryQuery(connection, update_dept_sql, ascertain_params, function(err, rows5) {   // 이탈 시 이탈 여부 업데이트
+                      if (err) throw err;      
+                      if (rows5 == 0) {
+                        res.status(400).json({ false: '이탈 처리를 실패하였습니다.' });
+                      } else {
+                        if (err) {
+                          throw err;
+                        } else {
+                          if (rows4.length === 0) {
+                            res.status(400).json({ false: '요청 시간 업데이트를 실패하였습니다.' });
+                          } else {
+                            res.status(200).json({ success: '출결 처리를 성공하였습니다.' });
+                            // 해당 날짜 최초 출석이 아닌 경우 중 이탈한 경우 중 요청 시간 업데이트 성공한 경우. 반환값은 없다.
+                          }
+                        }    
+                      }
+                    });
+                  } else {   // 해당 날짜에 최초 출석이 아닌 경우 중 이탈을 하지 않았거나 이탈했더라도 다시 돌아온 경우, 이탈 여부를 정상(이탈 아님)으로 돌린다.
+                      depart = 0;
+                      ascertain_params.unshift(depart);
+                      ordinaryQuery(connection, update_dept_sql, ascertain_params, function(err, rows5) {   // 이탈 아닐 시 이탈 여부 업데이트
+                        if (err) throw err;      
+                        if (rows5 == 0) {
+                          res.status(400).json({ false: '이탈 처리 초기화를 실패하였습니다.' });
+                        } else {
+                          if (err) {
+                            throw err;
+                          } else {
+                            if (rows4.length === 0) {
+                              res.status(400).json({ false: '요청 시간 업데이트를 실패하였습니다.' });
+                            } else {
+                              res.status(200).json({ success: '출결 처리를 성공하였습니다.' });
+                              // 해당 날짜 최초 출석이 아닌 경우 중 이탈하지 않았거나 이탈 후 다시 복귀한 경우 중 요청 시간 업데이트 성공한 경우. 반환값은 없다.
+                            }
+                          }    
+                        }
+                      });
+                    }
+                  });
+                }
               }
-            }
           });
         }
       }
@@ -1067,6 +1186,98 @@ router.put('/revise_attendance', (req, res) => {
   });
 });
 
+// 돌아와(교수)(B)
+router.post('/comeback', (req, res) => {
+  console.log('돌아와!!!');
+  const l_id = req.body.l_id,
+        temp = _.pick(req.body, ['a_date', 'identifier']), temp2 = _.pick(req.body, ['l_id', 'identifier']),
+        sql = 'select depart from ATTENDANCE where a_date = ? and c_id in (select c_id from COURSE where identifier = ?);',
+        find_topic_sql = 'select u_id from COURSE where l_id = ? and identifier = ?;',
+        params = _.toArray(temp), find_topic_params = _.toArray(temp2);
 
+  let topic;
+  let message = { data: { status : '4', l_id: l_id }, topic: topic };
+
+  pool.getConnection(function (err, connection) {
+    if (err) throw err;
+    var query = connection.query(sql, params, function (err, rows) {
+      if (err) {
+        connection.release();
+        throw err;
+      } else {
+        if (rows.length === 0) {
+          res.status(400).json({ false: '출결 상태 조회에 실패했습니다.' }); 
+          connection.release();
+        } else {
+          if (rows[0].depart === 1) {   // 요청한 학생이 이탈 중이라면 메시지 보냄
+            ordinaryQuery(connection, find_topic_sql, find_topic_params, function(err, rows2) {   // 이탈 시 이탈 여부 업데이트
+              if (err) throw err;      
+              if (rows2 == 0) {
+                res.status(400).json({ false: '이탈 중인 학생이 아닙니다.' });  // identifier(학생 선택) or l_id 오류
+              } else {
+                topic = rows2[0].u_id;
+                message.topic = topic;
+                fcm.send(message);
+                res.status(200).json({ success: '메시지 전송에 성공하였습니다.' });
+              }
+            });              
+          } else {
+            res.status(400).json({ false: '이탈 중인 학생이 아닙니다' });    // identifier(학생 선택) 오류
+            connection.release();
+          }          
+        }
+      }
+    });
+  });
+});
+
+// 강제 이탈 처리(추후 스케쥴러로 변경 예정)
+router.post('/depart', (req, res) => {
+  console.log('이탈');
+  const c_id = req.body.c_id,
+        update_dept_sql = 'update ATTENDANCE set depart = ? where c_id = ? and a_date = ?;', 
+        tmpTime1 = new Date(), tmpTime2 = moment(tmpTime1).add(9, 'hours'), tmpTime3 = tmpTime2.toISOString(), currentDate = tmpTime3.substring(0, 10);  // 오늘 날짜를 ISO 형식 날짜로 표현한다.        
+
+  let depart = 1, ascertain_params = [depart, c_id, currentDate];
+
+  pool.getConnection(function (err, connection) {
+    if (err) throw err;
+    var query = connection.query(update_dept_sql, ascertain_params, function (err, rows) {
+      if (err) {
+        connection.release();
+        throw err;
+      } else {
+        if (rows.length === 0) {
+          res.status(400).json({ false: '이탈 처리에 실패했습니다.' }); // c_id 혹은 서버 / DB 오류
+          connection.release();
+        } else {
+          res.status(200).json({ success: '이탈 처리에 성공했습니다.' });
+          connection.release();
+        }
+      }
+    });
+  });
+});
+
+// ================== helper function ================== //
+
+// normal query
+const ordinaryQuery = (connection, sql, params, callback) => {
+  connection.query(sql, params, function (err, rows) {
+    if (err) {
+      callback(err, null);  
+      connection.release();
+      throw err;
+    } else {
+      if (rows.length === 0) {
+        callback(null, 0);          
+        connection.release();
+      } else {
+        callback(null, rows);
+        connection.release();        
+      }
+    }    
+  });
+}
 
 module.exports = router;
