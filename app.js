@@ -6,6 +6,7 @@ const http = require('http');
 const db_pool = require('./db/db_pool');
 const router = require('./routes/router');
 const fcm = require('./routes/fcm');
+const schedule = require('./schedule');
 
 const app = express();
 
@@ -18,6 +19,9 @@ app.use('/', router);  // router 사용설정은 bodyParser 사용설정 보다 
 
 //===== FCM 초기화 =====//
 fcm.init();
+
+//===== 이탈여부 감지 scheduler 실행 =====//
+// schedule.sit();
 
 //===== 404 처리 부분 =====//
 app.use((req, res, next) => {
