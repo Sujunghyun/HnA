@@ -67,36 +67,6 @@ CREATE TABLE ATTENDANCE (    -- 출결 테이블 // 수강일련번호로 유저
     REFERENCES COURSE(c_id) ON DELETE CASCADE
 ) ENGINE=innoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE BOARD (    -- 게시판 테이블
-    b_id INT AUTO_INCREMENT,               -- 게시글 일련번호.
-    u_id VARCHAR(30),  
-    u_name VARCHAR(20) NOT NULL,           -- U_ID 받아서 해결함.
-    u_depart VARCHAR(30) NOT NULL,         -- U_ID 받아서 해결함.
-    title VARCHAR(30) NOT NULL,            -- 제목
-    contents VARCHAR(1000) NOT NULL,       -- 내용 
-    counts SMALLINT NOT NULL,              -- 조회수
-    reg_date TIMESTAMP NOT NULL,           -- 작성일시로 정렬
-    comments SMALLINT NOT NULL,            -- 댓글수
-    PRIMARY KEY (b_id),                    -- 기본키. 게시글 일련번호
-    FOREIGN KEY (u_id)                     -- 외래키. 토큰
-    REFERENCES USER(u_id)    
-) ENGINE=innoDB DEFAULT CHARSET=utf8;
-
-CREATE TABLE COMMENTS (    -- 게시판 댓글 테이블
-    cm_id INT AUTO_INCREMENT,              -- 댓글 일련번호. 댓글을 찾아서 여기에 댓글을 등록할 수 있도록함.
-    b_id INT,                              -- 게시글 일련번호. 어떤 글의 댓글인지 구분하기 위해 필요
-    u_id VARCHAR(30),  
-    u_name VARCHAR(20) NOT NULL,           -- U_ID 받아서 해결함.
-    contents VARCHAR(300) NOT NULL,        -- 댓글 내용    
-    reg_date TIMESTAMP NOT NULL,           -- 작성일시로 정렬
-    depth TINYINT NOT NULL,                -- 몇 차 댓글인지(댓글, 댓글의 댓글, ...)
-    PRIMARY KEY (cm_id),                   -- 기본키. 댓글 일련번호
-    FOREIGN KEY (u_id)                     -- 외래키. 토큰
-    REFERENCES USER(u_id),
-    FOREIGN KEY (b_id)                     -- 외래키. 게시글 일련번호 
-    REFERENCES BOARD(b_id)
-) ENGINE=innoDB DEFAULT CHARSET=utf8;
-
 CREATE TABLE CALENDAR (    -- 캘린더 테이블
     u_id VARCHAR(30),    
     ddate DATE NOT NULL,                    -- 일정 년/월/일
