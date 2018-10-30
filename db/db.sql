@@ -68,13 +68,30 @@ CREATE TABLE ATTENDANCE (    -- 출결 테이블 // 수강일련번호로 유저
 ) ENGINE=innoDB DEFAULT CHARSET=utf8;
 
 CREATE TABLE CALENDAR (    -- 캘린더 테이블
-    u_id VARCHAR(30),    
-    ddate DATE NOT NULL,                    -- 일정 년/월/일
-    start_time TIME,                        -- 일정 시작시간
-    end_time TIME,                          -- 일정 종료시간
+    sc_id INT AUTO_INCREMENT,               -- 일정 일련번호
+    u_id VARCHAR(30) NOT NULL,    
+    u_depart VARCHAR(30) NOT NULL,          -- 학과
+    sc_day VARCHAR(9) NOT NULL,             -- 요일
+    start_date VARCHAR(10) NOT NULL,        -- 일정 시작 년/월/일
+    sc_start_time TIME NOT NULL,            -- 일정 시작시간
+    end_date VARCHAR(10) NOT NULL,          -- 일정 종료 년/월/일
+    sc_end_time TIME NOT NULL,              -- 일정 종료시간
     title VARCHAR(50) NOT NULL,             -- 일정 제목
     place VARCHAR(50),                      -- 일정 장소
     schedule VARCHAR(200),                  -- 일정 내용
+    PRIMARY KEY(sc_id),                     -- 기본키, 일정 일련번호
     FOREIGN KEY (u_id)                      -- 외래키. 토큰
     REFERENCES USER(u_id) ON DELETE CASCADE
 ) ENGINE=innoDB DEFAULT CHARSET=utf8; 
+
+-- CREATE TABLE CALENDAR (    -- 캘린더 테이블
+--     u_id VARCHAR(30),    
+--     ddate DATE NOT NULL,                    -- 일정 년/월/일
+--     start_time TIME,                        -- 일정 시작시간
+--     end_time TIME,                          -- 일정 종료시간
+--     title VARCHAR(50) NOT NULL,             -- 일정 제목
+--     place VARCHAR(50),                      -- 일정 장소
+--     schedule VARCHAR(200),                  -- 일정 내용
+--     FOREIGN KEY (u_id)                      -- 외래키. 토큰
+--     REFERENCES USER(u_id) ON DELETE CASCADE
+-- ) ENGINE=innoDB DEFAULT CHARSET=utf8; 
