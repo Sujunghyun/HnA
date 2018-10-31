@@ -3,19 +3,28 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const http = require('http');
-const db_pool = require('./db/db_pool');
-const router = require('./routes/router');
-const fcm = require('./routes/fcm');
-const schedule = require('./schedule');
+const fcm = require('./util/fcm');
+const auth = require('./routes/auth'),
+      lecture = require('./routes/lecture'),
+      course = require('./routes/course'),
+      attendance = require('./routes/attendance'),
+      statistics = require('./routes/statistics'),
+      calendar = require('./routes/calendar');
+// const schedule = require('./schedule');
 
 const app = express();
 
-//===== body-parser 사용 설정 =====//
+//===== body-parser 사용 설정 =====//   router 사용설정은 bodyParser 사용설정 보다 아래에 있어야함.
 app.use(bodyParser.urlencoded({extended: true}));
 app.use(bodyParser.json());
 
 //===== router 사용 설정 =====//
-app.use('/', router);  // router 사용설정은 bodyParser 사용설정 보다 아래에 있어야함.
+app.use('/', auth);
+app.use('/', lecture);
+app.use('/', course);
+app.use('/', calendar);
+app.use('/attendance', attendance);
+app.use('/statistics', statistics);
 
 //===== FCM 초기화 =====//
 fcm.init();
