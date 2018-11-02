@@ -70,12 +70,12 @@ router.get('/checklecture/:identifier/:l_grade/:l_semester', (req, res) => {
 router.post('/register', (req, res) => {
   console.log('수강 신청');
   const temp = _.pick(req.body, ['u_id', 'l_id']),
-    l_id = req.body.l_id,
-    select_sql = 'select u_name, u.identifier, l_name, start_time, end_time from USER u, LECTURE l where  u_id = ? and l_id = ?;',
-    select_sql2 = 'select c_id from COURSE where u_id = ? and l_id = ?', state_sql = 'select state from COURSE where l_id = ?;',
-    insert_sql = 'insert into COURSE (u_id, l_id, u_name, identifier, l_name, start_time, end_time) values (?,?,?,?,?,?,?);',
-    insert_state_sql = 'insert into COURSE (u_id, l_id, u_name, identifier, l_name, state, start_time, end_time) values (?,?,?,?,?,?,?,?);',
-    params1 = _.toArray(temp);
+        l_id = req.body.l_id,
+        select_sql = 'select u_name, u.identifier, l_name, start_time, end_time from USER u, LECTURE l where  u_id = ? and l_id = ?;',
+        select_sql2 = 'select c_id from COURSE where u_id = ? and l_id = ?', state_sql = 'select state from COURSE where l_id = ?;',
+        insert_sql = 'insert into COURSE (u_id, l_id, u_name, identifier, l_name, start_time, end_time) values (?,?,?,?,?,?,?);',
+        insert_state_sql = 'insert into COURSE (u_id, l_id, u_name, identifier, l_name, state, start_time, end_time) values (?,?,?,?,?,?,?,?);',
+        params1 = _.toArray(temp);
   let c_id, state;
   // state 검색해서 수업 준비 중이라면 그냥 insert 하고 수업 준비 중이 아니면 insert 하는 state에 검색결과 값을 넣는다.  
   pool.getConnection(function (err, connection) {
@@ -112,53 +112,39 @@ router.post('/register', (req, res) => {
                             res.status(400).json({ false: '수강 신청에 실패하였습니다.' });  // params3 오류
                             connection.release();
                           } else {
-                            var confirm = connection.query(select_sql2, params1, function (err, rows5) {
-                              if (err) {
-                                connection.release();
-                                throw err;
-                              } else {
-                                c_id = rows5[0].c_id;
-                                res.status(200).json({ c_id, success: '수강 신청에 성공하였습니다.' });
-                                connection.release();
-                              }
-                            });
+                            c_id = rows4.insertId;
+                            res.status(200).json({ c_id, success: '수강 신청에 성공하였습니다.' });
+                            connection.release();
                           }
                         }
                       });
                     } else if (rows3[0].state != '수업 준비 중') {    // 학생이 수강신청을 한 시점에서 수업이 수업 중이거나 수업 종료이거나 휴강인 경우
-                      state = rows3[0].state;
-                      params3.splice(5, 0, state);
-                      var insert = connection.query(insert_state_sql, params3, function (err, rows4) {
-                        if (err) {
-                          connection.release();
-                          throw err;
-                        } else {
-                          if (rows4.length === 0) {
-                            res.status(400).json({ false: '수강 신청에 실패하였습니다.' });  // params3 오류
+                        state = rows3[0].state;
+                        params3.splice(5, 0, state);
+                        var insert = connection.query(insert_state_sql, params3, function (err, rows4) {
+                          if (err) {
                             connection.release();
+                            throw err;
                           } else {
-                            var confirm = connection.query(select_sql2, params1, function (err, rows5) {
-                              if (err) {
-                                connection.release();
-                                throw err;
-                              } else {
-                                c_id = rows5[0].c_id;
-                                res.status(200).json({ c_id, success: '수강 신청에 성공하였습니다.' });
-                                connection.release();
-                              }
-                            });
+                            if (rows4.length === 0) {
+                              res.status(400).json({ false: '수강 신청에 실패하였습니다.' });  // params3 오류
+                              connection.release();
+                            } else {
+                              c_id = rows4.insertId;
+                              res.status(200).json({ c_id, success: '수강 신청에 성공하였습니다.' });
+                              connection.release();                                             
+                            }
                           }
-                        }
-                      });
-                    }
+                        });
+                      }
                   }
-                });
+                });                
               } else {  // 검색결과 c_id가 있는 즉, 이미 수강신청을 한 경우
                 res.status(400).json({ false: '이미 수강신청한 과목입니다.' });
                 connection.release();
-              }
+              }              
             }
-          });
+          });          
         }
       }
     });
