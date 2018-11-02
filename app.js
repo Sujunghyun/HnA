@@ -23,8 +23,8 @@ app.use('/', auth);
 app.use('/', lecture);
 app.use('/', course);
 app.use('/', calendar);
+app.use('/', statistics);
 app.use('/attendance', attendance);
-app.use('/statistics', statistics);
 
 //===== FCM 초기화 =====//
 fcm.init();
