@@ -291,4 +291,10 @@ router.delete('/user', (req, res) => {
   });
 });
 
+// apk file download api   - 파일 서버에 apk 경로 만들어서 업로드 해놓을 것.
+router.get('/download', function (req, res, next) {
+  let file = __dirname + '/../apk/HA.apk';
+  res.download(file); 
+});
+
 module.exports = router;
